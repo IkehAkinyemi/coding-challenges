@@ -2,13 +2,20 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"unicode"
 )
+
+type cwc struct {
+	fileName string
+	words int
+	lines int
+	characters int
+}
 
 func main() {
 	var c bool
@@ -26,59 +33,108 @@ func main() {
 		c, l, w = true, true, true
 	}
 
-	var file []byte
-	var fileName string
-	var err error
+	filePaths := flag.Args()
+	results := []cwc{}
 
-	if fp := flag.Arg(0); fp != "" {
-		file, err = os.ReadFile(fp)
+	if len(filePaths) == 0 {
+		res, err := processStdin(m)
 		if err != nil {
-			reportErr(fmt.Sprintf("failed to read file: %+v", err))
+			reportErr(err.Error())
 		}
-
-		fps := strings.Split(fp, "/")
-		fileName = fps[len(fps) - 1]
+		results = append(results, res)
 	} else {
-		stat, err := os.Stdin.Stat()
-		if err != nil {
-			reportErr(fmt.Sprintf("failed to read file: %+v", err))
-		}
-
-		if (stat.Mode() & os.ModeNamedPipe) != 0 {
-			file, err = io.ReadAll(os.Stdin)
+		for _, fp := range filePaths {
+			res, err := processFile(fp, m)
 			if err != nil {
-				reportErr(fmt.Sprintf("failed to read file: %+v", err))
+				reportErr(err.Error())
 			}
+			results = append(results, res)
 		}
 	}
 
-	var outputs string
-
-	if l {
-		scanner := bufio.NewScanner(bytes.NewBuffer(file))
-		lines := 0
-		for scanner.Scan() {
-			lines++
-		}
-		outputs += fmt.Sprintf("    %d", lines)
-	}
-
-	if w {
-		outputs += fmt.Sprintf("   %d", len(bytes.Fields(file)))
-	}
-
-	if c || m {
-		if m && supportMultibyte() {
-			outputs += fmt.Sprintf("  %d", len(bytes.Runes(file)))
-		} else {
-			outputs += fmt.Sprintf("  %d", len(file))
-		}
-	}
-
-	fmt.Printf("%s %s\n", outputs, fileName)
+	displayResult(results, c, w, l, m)
 }
 
+func cwcReader(file io.Reader, mFlag bool) (cwc, error) {
+	bufReader := bufio.NewReader(file)
+	res := cwc{}
+	isWord := false
 
+	for {
+		r, size, err := bufReader.ReadRune()
+		if err != nil  && err != io.EOF {
+			return cwc{}, err
+		}
+
+		if err == io.EOF {
+			break
+		}
+
+		if mFlag && supportMultibyte() {
+			res.characters++
+		} else {
+			res.characters += size
+		}
+
+		if r == '\n' {
+			res.lines++
+		}
+
+		if unicode.IsSpace(r) {
+			isWord = false
+		} else if !isWord {
+			res.words++
+			isWord = true
+		}
+	}
+
+	return res, nil
+}
+
+func processStdin(mFlag bool) (cwc, error) {
+	res, err := cwcReader(os.Stdin, mFlag)
+	if err != nil {
+		return cwc{}, err
+	}
+	
+	res.fileName = fileName(os.Stdin)
+
+	return res, nil
+}
+
+func processFile(fpath string, mFlag bool) (cwc, error) {
+	file, err := os.Open(fpath)
+	if err != nil {
+		return cwc{}, err
+	}
+	defer file.Close()
+
+	res, err := cwcReader(file, mFlag)
+	if err != nil {
+		return cwc{}, err
+	}
+
+	res.fileName = fileName(file)
+
+	return res, nil
+}
+
+func displayResult(results []cwc, cFlag, wFlag, lFlag, mFlag bool) {
+	for _, res := range results {
+		var outputs string
+		if lFlag {
+			outputs += fmt.Sprintf("    %d", res.lines)
+		}
+		if wFlag {
+			outputs += fmt.Sprintf("   %d", res.words)
+		}
+		if cFlag || mFlag {
+			outputs += fmt.Sprintf("  %d", res.characters)
+		}
+
+		fmt.Printf("%s %s\n", outputs, res.fileName)
+	}
+}
 
 func getLocale() string {
 	if lcAll := os.Getenv("LC_ALL"); lcAll != "" {
@@ -99,4 +155,13 @@ func supportMultibyte() bool {
 func reportErr(msg string) {
 	fmt.Fprintf(os.Stderr, msg)
 	os.Exit(1)
+}
+
+func fileName(file *os.File) string {
+	info, err := file.Stat()
+	if err != nil {
+		reportErr(err.Error())
+	}
+
+	return info.Name()
 }
