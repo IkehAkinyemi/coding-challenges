@@ -91,13 +91,6 @@ In this step your goal is to support being able to read from standard input if n
 ```
 If it doesn’t, check your code, fix any bugs and try again. If it does, congratulations! You’ve done it, pat yourself on the back, job well done!
 
-## Installation
-To download the project and install the utility, run the following in your terminal, then follow the on-screen instructions.
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/IkehAkinyemi/wc-util/main/install.sh | sh
-```
-
 ## Security
 
 If you discover a security vulnerability within the source code, please raise an issue on this repository or send an e-mail to **mrikehchukwuka@gmail.com**.
